@@ -1,0 +1,22 @@
+{
+    "name": "nfservice/asaas",
+    "description": "Biblioteca para comunicaçao com a API do ASAAS",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Diego Almeida",
+            "email": "diego.feres82@gmail.com"
+        }
+    ],
+    "autoload": {
+        "files": [
+            "src/helpers.php"
+        ],
+        "psr-4": {
+            "NFService\\Asaas\\": "src/"
+        }
+    },
+    "minimum-stability": "stable",
+    "require": {}
+}
