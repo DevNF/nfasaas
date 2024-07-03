@@ -206,6 +206,86 @@ class Tools
     }
 
     /**
+     * Criar Webhook
+     *
+     * @access public
+     * @param array $params
+     * @return array
+     */
+    public function criaWebhook(array $params) : array
+    {
+        try {
+            return $this->post('webhooks', $params);
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage());
+        }
+    }
+
+    /**
+     * Listar Webhooks
+     *
+     * @access public
+     * @return array
+     */
+    public function listarWebhooks() : array
+    {
+        try {
+            return $this->get('webhooks');
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage());
+        }
+    }
+
+    /**
+     * Recuperar um único Webhook
+     *
+     * @access public
+     * @param string $id
+     * @return array
+     */
+    public function recuperaWebhook(string $id) : array
+    {
+        try {
+            return $this->get('webhooks/'.$id);
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage());
+        }
+    }
+
+    /**
+     * Atualizar Webhook existente
+     *
+     * @access public
+     * @param string $id
+     * @param array $params
+     * @return array
+     */
+    public function atualizaWebhook(string $id, array $params) : array
+    {
+        try {
+            return $this->put('webhooks/'.$id, $params);
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage());
+        }
+    }
+
+    /**
+     * Remover Webhook
+     *
+     * @access public
+     * @param string $id
+     * @return array
+     */
+    public function removeWebhook(string $id) : array
+    {
+        try {
+            return $this->delete('webhooks/'.$id);
+        } catch (\Exception $e) {
+            throw new \Exception($e->getMessage());
+        }
+    }
+
+    /**
      * Função responsável por retornar o saldo atual
      *
      * @access public
@@ -227,17 +307,29 @@ class Tools
      * @access public
      * @return array
      */
-    public function consultaExtrato(array $params = []): array
+    public function consultaExtrato(array $dados, array $params = []): array
     {
         try {
             $params = array_filter($params, function ($v, $k) {
-                return $k !== 'limit';
+                return $k !== 'limit' && $v['value'] !== '';
             }, ARRAY_FILTER_USE_BOTH);
 
             $params[] = [
                 'name' => 'limit',
                 'value' => 100
             ];
+
+            $params = array_merge($params, [
+                [
+                    'name' => 'startDate',
+                    'value' => $dados['startDate']
+                ],
+                [
+                    'name' => 'finishDate',
+                    'value' => $dados['finishDate']
+                ]
+            ]);
+
             return $this->get('financialTransactions', $params);
         } catch (Exception $error) {
             throw new Exception($error, 1);
@@ -379,6 +471,22 @@ class Tools
         }
     }
 
+
+    /**
+     * Função responsável por retornar os dados comerciais
+     *
+     * @access public
+     * @return array
+     */
+    public function consultaDadosComerciais(array $params = []): array
+    {
+        try {
+            return $this->get('myAccount/commercialInfo', $params);
+        } catch (Exception $error) {
+            throw new Exception($error, 1);
+        }
+    }
+
     /**
      * Função responsável por retornar o status dos documentos
      *
@@ -499,6 +607,10 @@ class Tools
                 throw new Exception('Cliente não encontrado', 1);
             }
 
+            if ($data['httpCode'] == 401) {
+                throw new Exception('Sem comunicação com o Asaas', 1);
+            }
+
             throw new Exception('Ocorreu um erro interno ao tentar buscar o cliente, tente novamente mais tarde!', 1);
         } catch (Exception $error) {
             throw new Exception($error, 1);
@@ -585,6 +697,10 @@ class Tools
 
             if ($data['httpCode'] == 404) {
                 throw new Exception('Cliente não encontrado', 1);
+            }
+
+            if ($data['httpCode'] == 401) {
+                throw new Exception('Sem comunicação com o Asaas', 1);
             }
 
             $errors = array_map(function($item) {
@@ -774,7 +890,21 @@ class Tools
                 throw new Exception('Cobrança não encontrada', 1);
             }
 
-            throw new Exception('Ocorreu um erro interno ao tentar buscar a cobrança, tente novamente mais tarde!', 1);
+            if ($data['httpCode'] == 401) {
+                throw new Exception('Sem comunicação com o Asaas', 1);
+            }
+
+            if (isset($data['body']->errors)) {
+                $errors = array_map(function($item) {
+                    return $item->description;
+                }, $data['body']->errors);
+            }
+
+            if (!empty($errors)) {
+                throw new Exception(implode("\r\n", $errors), 1);
+            }
+
+            throw new Exception('Ocorreu um erro interno ao tentar buscar a cobrança Asaas, tente novamente mais tarde!', 1);
         } catch (Exception $error) {
             throw new Exception($error, 1);
         }
@@ -798,17 +928,36 @@ class Tools
      * @access public
      * @return array
      */
-    public function listaCobrancas(array $params = []): array
+    public function listaCobrancas(array $dados, array $params = []): array
     {
         try {
-            $params = array_filter($params, function($item) {
-                return $item['name'] !== 'limit';
+            $params = array_filter($params, function ($v, $k) {
+                return $k !== 'limit' && $v['value'] !== '';
             }, ARRAY_FILTER_USE_BOTH);
 
             $params[] = [
                 'name' => 'limit',
                 'value' => 100
             ];
+
+            $params = array_merge($params, [
+                [
+                    'name' => 'customer',
+                    'value' => $dados['customer']
+                ],
+                [
+                    'name' => 'dueDate[ge]',
+                    'value' => $dados['dueDateStart']
+                ],
+                [
+                    'name' => 'dueDate[le]',
+                    'value' => $dados['dueDateEnd']
+                ],
+                [
+                    'name' => 'status',
+                    'value' => $dados['status']
+                ]
+            ]);
 
             $data = $this->get('payments', $params);
 
@@ -861,6 +1010,17 @@ class Tools
 
             if ($data['httpCode'] == 200) {
                 return $data;
+            }
+
+            if ($data['httpCode'] == 400) {
+                $errors = array_map(function($item) {
+                    return $item->description;
+                }, $data['body']->errors);
+
+                return [
+                    'httpCode' => $data['httpCode'],
+                    'errors' => $errors
+                ];
             }
 
             $errors = array_map(function($item) {
@@ -1086,6 +1246,10 @@ class Tools
             $data = $this->post("payments/$id/receiveInCash", $data, $params);
 
             if ($data['httpCode'] == 200) {
+                return $data;
+            }
+
+            if ($data['httpCode'] == 400) {
                 return $data;
             }
 
