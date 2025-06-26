@@ -300,18 +300,17 @@ class Tools
         }
     }
 
-
     /**
      * Função responsável por retornar o extrato
      *
      * @access public
      * @return array
      */
-    public function consultaExtrato(array $dados, array $params = []): array
+    public function consultaExtrato(array $dados, array $params = [], bool $includeHeaders = false): array
     {
         try {
             $params = array_filter($params, function ($v, $k) {
-                return $k !== 'limit' && $v['value'] !== '';
+                return $v['name'] !== 'limit' && $v['value'] !== '';
             }, ARRAY_FILTER_USE_BOTH);
 
             $params[] = [
@@ -330,7 +329,7 @@ class Tools
                 ]
             ]);
 
-            return $this->get('financialTransactions', $params);
+            return $this->get('financialTransactions', $params, [], $includeHeaders);
         } catch (Exception $error) {
             throw new Exception($error, 1);
         }
@@ -2213,7 +2212,7 @@ class Tools
      * @param array $headers Cabeçalhos adicionais para requisição
      * @return array
      */
-    private function get(string $path, array $params = [], array $headers = []) :array
+    private function get(string $path, array $params = [], array $headers = [], bool $includeHeaders = false) :array
     {
         $opts = [
             CURLOPT_HTTPHEADER => $this->getDefaultHeaders()
@@ -2223,7 +2222,7 @@ class Tools
             $opts[CURLOPT_HTTPHEADER] = array_merge($opts[CURLOPT_HTTPHEADER], $headers);
         }
 
-        $exec = $this->execute($path, $opts, $params);
+        $exec = $this->execute($path, $opts, $params, $includeHeaders);
 
         return $exec;
     }
@@ -2237,7 +2236,7 @@ class Tools
      * @param array $headers Cabeçalhos adicionais para requisição
      * @return array
      */
-    private function post(string $path, array $body = [], array $params = [], array $headers = []) :array
+    private function post(string $path, array $body = [], array $params = [], array $headers = [], bool $includeHeaders = false) :array
     {
         $opts = [
             CURLOPT_POST => true,
@@ -2249,7 +2248,7 @@ class Tools
             $opts[CURLOPT_HTTPHEADER] = array_merge($opts[CURLOPT_HTTPHEADER], $headers);
         }
 
-        $exec = $this->execute($path, $opts, $params);
+        $exec = $this->execute($path, $opts, $params, $includeHeaders);
 
         return $exec;
     }
@@ -2263,7 +2262,7 @@ class Tools
      * @param array $headers Cabeçalhos adicionais para requisição
      * @return array
      */
-    private function put(string $path, array $body = [], array $params = [], array $headers = []) :array
+    private function put(string $path, array $body = [], array $params = [], array $headers = [], bool $includeHeaders = false) :array
     {
         $opts = [
             CURLOPT_HTTPHEADER => $this->getDefaultHeaders(),
@@ -2275,7 +2274,7 @@ class Tools
             $opts[CURLOPT_HTTPHEADER] = array_merge($opts[CURLOPT_HTTPHEADER], $headers);
         }
 
-        $exec = $this->execute($path, $opts, $params);
+        $exec = $this->execute($path, $opts, $params, $includeHeaders);
 
         return $exec;
     }
@@ -2288,7 +2287,7 @@ class Tools
      * @param array $headers Cabeçalhos adicionais para requisição
      * @return array
      */
-    private function delete(string $path, array $params = [], array $headers = []) :array
+    private function delete(string $path, array $params = [], array $headers = [], bool $includeHeaders = false) :array
     {
         $opts = [
             CURLOPT_HTTPHEADER => $this->getDefaultHeaders(),
@@ -2299,7 +2298,7 @@ class Tools
             $opts[CURLOPT_HTTPHEADER] = array_merge($opts[CURLOPT_HTTPHEADER], $headers);
         }
 
-        $exec = $this->execute($path, $opts, $params);
+        $exec = $this->execute($path, $opts, $params, $includeHeaders);
 
         return $exec;
     }
@@ -2312,7 +2311,7 @@ class Tools
      * @param array $headers Cabeçalhos adicionais para requisição
      * @return array
      */
-    private function options(string $path, array $params = [], array $headers = []) :array
+    private function options(string $path, array $params = [], array $headers = [], bool $includeHeaders = false) :array
     {
         $opts = [
             CURLOPT_CUSTOMREQUEST => "OPTIONS"
@@ -2322,7 +2321,7 @@ class Tools
             $opts[CURLOPT_HTTPHEADER] = $headers;
         }
 
-        $exec = $this->execute($path, $opts, $params);
+        $exec = $this->execute($path, $opts, $params, $includeHeaders);
 
         return $exec;
     }
@@ -2337,7 +2336,7 @@ class Tools
      * @access private
      * @return array
      */
-    private function execute(string $path, array $opts = [], array $params = []) :array
+    private function execute(string $path, array $opts = [], array $params = [], bool $includeHeaders = false) :array
     {
         if (!preg_match("/^\//", $path)) {
             $path = '/' . $path;
@@ -2372,12 +2371,42 @@ class Tools
 
         curl_setopt($curlC, CURLOPT_URL, $url);
         curl_setopt($curlC, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($curlC, CURLOPT_HEADER, $includeHeaders);
         $retorno = curl_exec($curlC);
         $info = curl_getinfo($curlC);
-        $return["body"] = ($this->config['decode'] || !$this->config['decode'] && $info['http_code'] != '200') ? json_decode($retorno) : $retorno;
+
+        $body_content = '';
+        $headers = [];
+
+        if ($includeHeaders) {
+            $header_size = $info['header_size'];
+            $headers_raw = substr($retorno, 0, $header_size);
+            $body_content = substr($retorno, $header_size);
+
+            $header_lines = explode("\r\n", $headers_raw);
+            foreach ($header_lines as $line) {
+                $line = trim($line);
+                if (empty($line)) continue;
+                if (strpos($line, 'HTTP/') === 0) continue; 
+
+                $parts = explode(':', $line, 2);
+                if (count($parts) == 2) {
+                    $header_name = trim($parts[0]);
+                    $header_value = trim($parts[1]);
+                    $headers[$header_name][] = $header_value;
+                }
+            }
+        } else {
+            $body_content = $retorno;
+        }
+
+        $return["body"] = ($this->config['decode'] || (!$this->config['decode'] && $info['http_code'] != '200')) ? json_decode($body_content) : $body_content;
         $return["httpCode"] = curl_getinfo($curlC, CURLINFO_HTTP_CODE);
+        if (!empty($return["body"])) {
+            $return["headers"] = $headers;
+        }
         if ($this->config['debug']) {
-            $return['info'] = curl_getinfo($curlC);
+            $return['info'] = $info;
         }
         curl_close($curlC);
 
