@@ -25,6 +25,7 @@ class Tools
      */
     private $config = [
         'access_token' => '',
+        'User-Agent' => 'fuganholi_sistemas_fiscal',
         'production' => false,
         'debug' => false,
         'version' => 3,
@@ -193,7 +194,8 @@ class Tools
     private function getDefaultHeaders() :array
     {
         $headers = [
-            'access_token: '.$this->config['access_token']
+            'access_token: '.$this->config['access_token'],
+            'User-Agent: '.$this->config['User-Agent']
         ];
 
         if (!$this->config['upload']) {
